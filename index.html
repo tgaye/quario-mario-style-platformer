@@ -1,0 +1,656 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quario: Mario-Style Platformer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #5b9eff;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 400px;
+            background-color: #5b9eff;
+            overflow: hidden;
+        }
+        
+        #ui-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 16px;
+            text-shadow: 2px 2px 0 #000;
+            pointer-events: none;
+        }
+        
+        #start-screen {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100;
+        }
+        
+        #start-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            text-shadow: 4px 4px 0 #000;
+        }
+        
+        #start-screen p {
+            font-size: 20px;
+            margin-bottom: 30px;
+        }
+        
+        #start-button {
+            padding: 10px 20px;
+            font-size: 20px;
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+        
+        #start-button:hover {
+            background-color: #ff3333;
+        }
+    </style>
+
+<base target="_self">
+
+
+    </head><body><div id="game-container">
+        <div id="ui-overlay">
+            <div>Score: <span id="score-display">0</span></div>
+            <div>Lives: <span id="lives-display">3</span></div>
+        </div>
+        <div id="start-screen">
+            <h1>QUARIO</h1>
+            <p>Use arrow keys to move, SPACE to jump</p>
+            <p>Break blocks with UP arrow</p>
+            <button id="start-button">START GAME</button>
+        </div>
+    </div>
+
+    <script>
+        let player;
+        let platforms = [];
+        let enemies = [];
+        let coins = [];
+        let powerups = [];
+        let projectiles = [];
+        let bricks = [];
+        let questionBlocks = [];
+        let flagpole;
+        let cameraOffset = 0;
+        let score = 0;
+        let lives = 3;
+        let gameState = 'start';
+        let gravity = 0.5;
+        let gameWidth = 4000;
+        let groundHeight = 350;
+        let isInvincible = false;
+        let invincibleTimer = 0;
+        let playerSize = 'small';
+        let canShoot = false;
+        let shootCooldown = 0;
+        
+        function setup() {
+            let canvas = createCanvas(800, 400);
+            canvas.parent('game-container');
+            
+            // Initialize player
+            player = {
+                x: 100,
+                y: groundHeight - 30,
+                width: 30,
+                height: 30,
+                velX: 0,
+                velY: 0,
+                speed: 5,
+                jumpForce: -12,
+                isJumping: false,
+                facing: 'right',
+                animationFrame: 0
+            };
+            
+            // Create platforms
+            platforms.push({x: 0, y: groundHeight, width: gameWidth, height: 50});
+            
+            // Add some elevated platforms
+            platforms.push({x: 300, y: 250, width: 200, height: 20});
+            platforms.push({x: 600, y: 200, width: 200, height: 20});
+            platforms.push({x: 900, y: 250, width: 200, height: 20});
+            
+            // Add bricks
+            bricks.push({x: 200, y: 250, width: 30, height: 30, hitPoints: 1});
+            bricks.push({x: 230, y: 250, width: 30, height: 30, hitPoints: 1});
+            bricks.push({x: 500, y: 150, width: 30, height: 30, hitPoints: 1});
+            bricks.push({x: 530, y: 150, width: 30, height: 30, hitPoints: 1});
+            
+            // Add question blocks
+            questionBlocks.push({x: 400, y: 200, width: 30, height: 30, hit: false});
+            questionBlocks.push({x: 700, y: 150, width: 30, height: 30, hit: false});
+            questionBlocks.push({x: 1000, y: 200, width: 30, height: 30, hit: false});
+            
+            // Add enemies
+            enemies.push({x: 400, y: groundHeight - 30, width: 30, height: 30, velX: -1, direction: -1});
+            enemies.push({x: 800, y: 220, width: 30, height: 30, velX: -1, direction: -1});
+            enemies.push({x: 1200, y: groundHeight - 30, width: 30, height: 30, velX: -1, direction: -1});
+            
+            // Add coins
+            for (let i = 0; i < 20; i++) {
+                coins.push({
+                    x: 200 + i * 150 + random(-50, 50),
+                    y: 100 + random(0, 150),
+                    width: 15,
+                    height: 15,
+                    collected: false,
+                    animation: 0
+                });
+            }
+            
+            // Add flagpole at the end
+            flagpole = {x: 3800, y: 100, width: 20, height: 250, reached: false};
+            
+            // Set up event listeners
+            document.getElementById('start-button').addEventListener('click', startGame);
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+        }
+        
+        function startGame() {
+            gameState = 'playing';
+            document.getElementById('start-screen').style.display = 'none';
+        }
+        
+        function handleKeyDown(e) {
+            if (gameState !== 'playing') return;
+            
+            if (e.key === 'ArrowRight') {
+                player.velX = player.speed;
+                player.facing = 'right';
+            } else if (e.key === 'ArrowLeft') {
+                player.velX = -player.speed;
+                player.facing = 'left';
+            } else if (e.key === 'ArrowUp' && !player.isJumping) {
+                player.velY = player.jumpForce;
+                player.isJumping = true;
+            } else if (e.key === 'f' && canShoot && shootCooldown <= 0) {
+                shootFireball();
+                shootCooldown = 30;
+            }
+        }
+        
+        function handleKeyUp(e) {
+            if (e.key === 'ArrowRight' && player.velX > 0) {
+                player.velX = 0;
+            } else if (e.key === 'ArrowLeft' && player.velX < 0) {
+                player.velX = 0;
+            }
+        }
+        
+        function shootFireball() {
+            const direction = player.facing === 'right' ? 1 : -1;
+            projectiles.push({
+                x: player.x + (direction * player.width/2),
+                y: player.y,
+                width: 20,
+                height: 20,
+                velX: 8 * direction,
+                velY: 0
+            });
+        }
+        
+        function draw() {
+            background('#5b9eff');
+            
+            // Update UI
+            document.getElementById('score-display').textContent = score;
+            document.getElementById('lives-display').textContent = lives;
+            
+            if (gameState === 'start') return;
+            
+            // Update game state
+            if (gameState === 'playing') {
+                updateGame();
+            }
+            
+            // Apply camera offset
+            translate(-cameraOffset, 0);
+            
+            // Draw ground
+            fill('#4aad52');
+            noStroke();
+            rect(0, groundHeight, gameWidth, 50);
+            
+            // Draw platforms
+            fill('#8b5a2b');
+            platforms.forEach(p => rect(p.x, p.y, p.width, p.height));
+            
+            // Draw bricks
+            fill('#b87333');
+            bricks.forEach(b => {
+                if (b.hitPoints > 0) {
+                    rect(b.x, b.y, b.width, b.height);
+                }
+            });
+            
+            // Draw question blocks
+            questionBlocks.forEach(q => {
+                fill(q.hit ? '#b87333' : '#ffcc00');
+                rect(q.x, q.y, q.width, q.height);
+                if (!q.hit) {
+                    fill('#000000');
+                    textSize(20);
+                    text('?', q.x + 8, q.y + 22);
+                }
+            });
+            
+            // Draw coins
+            coins.forEach(c => {
+                if (!c.collected) {
+                    fill('#ffd700');
+                    ellipse(c.x + c.width/2, c.y + c.height/2 + sin(c.animation) * 5, c.width, c.height);
+                    c.animation += 0.1;
+                }
+            });
+            
+            // Draw enemies
+            enemies.forEach(e => {
+                fill('#8b4513');
+                rect(e.x, e.y, e.width, e.height);
+                
+                // Eyes
+                fill('#ffffff');
+                ellipse(e.x + (e.direction === 1 ? 20 : 10), e.y + 10, 10, 10);
+                fill('#000000');
+                ellipse(e.x + (e.direction === 1 ? 20 : 10), e.y + 10, 5, 5);
+            });
+            
+            // Draw powerups
+            powerups.forEach(p => {
+                if (p.type === 'mushroom') {
+                    fill('#ff0000');
+                    rect(p.x, p.y, p.width, p.height);
+                } else if (p.type === 'flower') {
+                    fill('#ff9900');
+                    rect(p.x, p.y, p.width, p.height);
+                    fill('#ff0000');
+                    ellipse(p.x + p.width/2, p.y + p.height/2, p.width - 10, p.height - 10);
+                }
+            });
+            
+            // Draw projectiles
+            projectiles.forEach(p => {
+                fill('#ff9900');
+                ellipse(p.x + p.width/2, p.y + p.height/2, p.width, p.height);
+            });
+            
+            // Draw flagpole
+            fill('#ffffff');
+            rect(flagpole.x, flagpole.y, flagpole.width, flagpole.height);
+            fill('#ff0000');
+            triangle(
+                flagpole.x - 30, flagpole.y + 20,
+                flagpole.x + flagpole.width + 30, flagpole.y + 20,
+                flagpole.x + flagpole.width/2, flagpole.y + 50
+            );
+            
+            // Draw player
+            if (isInvincible && frameCount % 10 < 5) {
+                // Flash when invincible
+            } else {
+                fill('#ff0000');
+                if (playerSize === 'big') {
+                    rect(player.x, player.y - 10, player.width, player.height + 10);
+                    fill('#ffffff');
+                    ellipse(player.x + 15, player.y - 5, 10, 10);
+                    fill('#000000');
+                    ellipse(player.x + 15, player.y - 5, 5, 5);
+                } else {
+                    rect(player.x, player.y, player.width, player.height);
+                    fill('#ffffff');
+                    ellipse(player.x + 15, player.y + 5, 10, 10);
+                    fill('#000000');
+                    ellipse(player.x + 15, player.y + 5, 5, 5);
+                }
+                
+                // Mustache
+                fill('#000000');
+                rect(player.x + 5, player.y + (playerSize === 'big' ? 10 : 15), 20, 5);
+            }
+            
+            // Draw game over or victory screen
+            if (gameState === 'gameover') {
+                fill(0, 0, 0, 150);
+                rect(0, 0, width, height);
+                fill('#ffffff');
+                textSize(40);
+                textAlign(CENTER, CENTER);
+                text('GAME OVER', width/2, height/2);
+                textSize(20);
+                text('Press R to restart', width/2, height/2 + 50);
+            } else if (gameState === 'victory') {
+                fill(0, 0, 0, 150);
+                rect(0, 0, width, height);
+                fill('#ffffff');
+                textSize(40);
+                textAlign(CENTER, CENTER);
+                text('LEVEL COMPLETE!', width/2, height/2);
+                textSize(20);
+                text('Score: ' + score, width/2, height/2 + 50);
+            }
+        }
+        
+        function updateGame() {
+            // Update player position
+            player.x += player.velX;
+            player.y += player.velY;
+            player.velY += gravity;
+            
+            // Apply friction
+            player.velX *= 0.9;
+            
+            // Update camera
+            cameraOffset = player.x - width/3;
+            if (cameraOffset < 0) cameraOffset = 0;
+            if (cameraOffset > gameWidth - width) cameraOffset = gameWidth - width;
+            
+            // Check platform collisions
+            let onGround = false;
+            platforms.forEach(p => {
+                if (player.x + player.width > p.x && 
+                    player.x < p.x + p.width && 
+                    player.y + player.height >= p.y && 
+                    player.y + player.height <= p.y + 10) {
+                    player.y = p.y - player.height;
+                    player.velY = 0;
+                    player.isJumping = false;
+                    onGround = true;
+                }
+            });
+            
+            // Check brick collisions from below
+            if (keyIsDown(UP_ARROW)) {
+                bricks.forEach(b => {
+                    if (b.hitPoints > 0 && 
+                        player.x + player.width > b.x && 
+                        player.x < b.x + b.width && 
+                        player.y <= b.y + b.height && 
+                        player.y + player.height >= b.y) {
+                        
+                        b.hitPoints--;
+                        if (random() < 0.2) {
+                            coins.push({
+                                x: b.x + b.width/2 - 7.5,
+                                y: b.y - 15,
+                                width: 15,
+                                height: 15,
+                                collected: false,
+                                animation: 0
+                            });
+                        }
+                    }
+                });
+                
+                questionBlocks.forEach(q => {
+                    if (!q.hit && 
+                        player.x + player.width > q.x && 
+                        player.x < q.x + q.width && 
+                        player.y <= q.y + q.height && 
+                        player.y + player.height >= q.y) {
+                        
+                        q.hit = true;
+                        if (random() < 0.5) {
+                            powerups.push({
+                                x: q.x,
+                                y: q.y - 30,
+                                width: 30,
+                                height: 30,
+                                velY: -2,
+                                type: random() < 0.7 ? 'mushroom' : 'flower'
+                            });
+                        } else {
+                            coins.push({
+                                x: q.x + q.width/2 - 7.5,
+                                y: q.y - 15,
+                                width: 15,
+                                height: 15,
+                                collected: false,
+                                animation: 0
+                            });
+                        }
+                    }
+                });
+            }
+            
+            // Check coin collisions
+            coins.forEach(c => {
+                if (!c.collected && 
+                    player.x + player.width > c.x && 
+                    player.x < c.x + c.width && 
+                    player.y + player.height > c.y && 
+                    player.y < c.y + c.height) {
+                    c.collected = true;
+                    score += 100;
+                }
+            });
+            
+            // Check powerup collisions
+            powerups.forEach((p, i) => {
+                p.y += p.velY;
+                p.velY += 0.1;
+                
+                // Check if powerup hits ground
+                let powerupOnGround = false;
+                platforms.forEach(plat => {
+                    if (p.x + p.width > plat.x && 
+                        p.x < plat.x + plat.width && 
+                        p.y + p.height >= plat.y && 
+                        p.y + p.height <= plat.y + 10) {
+                        p.y = plat.y - p.height;
+                        p.velY = 0;
+                        powerupOnGround = true;
+                    }
+                });
+                
+                if (!powerupOnGround) {
+                    p.x += p.direction || 1;
+                }
+                
+                if (player.x + player.width > p.x && 
+                    player.x < p.x + p.width && 
+                    player.y + player.height > p.y && 
+                    player.y < p.y + p.height) {
+                    
+                    if (p.type === 'mushroom') {
+                        playerSize = 'big';
+                    } else if (p.type === 'flower') {
+                        canShoot = true;
+                    }
+                    powerups.splice(i, 1);
+                }
+            });
+            
+            // Update enemies
+            enemies.forEach((e, i) => {
+                e.x += e.velX;
+                
+                // Check if enemy hits wall or falls off platform
+                let enemyOnGround = false;
+                platforms.forEach(p => {
+                    if (e.x + e.width > p.x && 
+                        e.x < p.x + p.width && 
+                        e.y + e.height >= p.y && 
+                        e.y + e.height <= p.y + 10) {
+                        enemyOnGround = true;
+                        
+                        // Check if enemy hits edge of platform
+                        if (e.x <= p.x || e.x + e.width >= p.x + p.width) {
+                            e.velX *= -1;
+                            e.direction *= -1;
+                        }
+                    }
+                });
+                
+                if (!enemyOnGround) {
+                    e.velX *= -1;
+                    e.direction *= -1;
+                }
+                
+                // Check player-enemy collision
+                if (!isInvincible && 
+                    player.x + player.width > e.x && 
+                    player.x < e.x + e.width && 
+                    player.y + player.height > e.y && 
+                    player.y < e.y + e.height) {
+                    
+                    // Check if player is stomping enemy
+                    if (player.velY > 0 && player.y + player.height < e.y + e.height/2) {
+                        enemies.splice(i, 1);
+                        player.velY = -8;
+                        score += 200;
+                    } else {
+                        takeDamage();
+                    }
+                }
+            });
+            
+            // Update projectiles
+            projectiles.forEach((p, i) => {
+                p.x += p.velX;
+                p.y += p.velY;
+                
+                // Check if projectile hits enemy
+                enemies.forEach((e, j) => {
+                    if (p.x + p.width > e.x && 
+                        p.x < e.x + e.width && 
+                        p.y + p.height > e.y && 
+                        p.y < e.y + e.height) {
+                        enemies.splice(j, 1);
+                        projectiles.splice(i, 1);
+                        score += 200;
+                    }
+                });
+                
+                // Check if projectile goes off screen
+                if (p.x < cameraOffset || p.x > cameraOffset + width) {
+                    projectiles.splice(i, 1);
+                }
+            });
+            
+            // Check flagpole collision
+            if (!flagpole.reached && 
+                player.x + player.width > flagpole.x && 
+                player.x < flagpole.x + flagpole.width) {
+                flagpole.reached = true;
+                gameState = 'victory';
+                score += 1000;
+            }
+            
+            // Check if player falls off screen
+            if (player.y > height) {
+                takeDamage();
+            }
+            
+            // Update invincibility timer
+            if (isInvincible) {
+                invincibleTimer--;
+                if (invincibleTimer <= 0) {
+                    isInvincible = false;
+                }
+            }
+            
+            // Update shoot cooldown
+            if (shootCooldown > 0) {
+                shootCooldown--;
+            }
+        }
+        
+        function takeDamage() {
+            if (isInvincible) return;
+            
+            if (playerSize === 'big') {
+                playerSize = 'small';
+                player.height = 30;
+                isInvincible = true;
+                invincibleTimer = 120;
+            } else {
+                lives--;
+                if (lives <= 0) {
+                    gameState = 'gameover';
+                } else {
+                    player.x = 100;
+                    player.y = groundHeight - 30;
+                    player.velX = 0;
+                    player.velY = 0;
+                    isInvincible = true;
+                    invincibleTimer = 120;
+                }
+            }
+        }
+        
+        function keyPressed() {
+            if (key === 'r' && (gameState === 'gameover' || gameState === 'victory')) {
+                resetGame();
+            }
+        }
+        
+        function resetGame() {
+            player = {
+                x: 100,
+                y: groundHeight - 30,
+                width: 30,
+                height: 30,
+                velX: 0,
+                velY: 0,
+                speed: 5,
+                jumpForce: -12,
+                isJumping: false,
+                facing: 'right',
+                animationFrame: 0
+            };
+            
+            enemies = [];
+            enemies.push({x: 400, y: groundHeight - 30, width: 30, height: 30, velX: -1, direction: -1});
+            enemies.push({x: 800, y: 220, width: 30, height: 30, velX: -1, direction: -1});
+            enemies.push({x: 1200, y: groundHeight - 30, width: 30, height: 30, velX: -1, direction: -1});
+            
+            coins = coins.filter(c => !c.collected);
+            powerups = [];
+            projectiles = [];
+            cameraOffset = 0;
+            score = 0;
+            lives = 3;
+            gameState = 'playing';
+            playerSize = 'small';
+            canShoot = false;
+            flagpole.reached = false;
+            isInvincible = false;
+        }
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
